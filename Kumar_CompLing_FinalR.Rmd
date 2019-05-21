@@ -1,0 +1,216 @@
+---
+title: "Computational Linguistics Project"
+author: "Abhilasha Kumar"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Reading the File
+
+```{r}
+rpp = read.csv("rpp_data.csv", header = TRUE, sep = ",")
+library(dplyr)
+rpp = rpp %>% filter(TextNumber != "" & Abstract != "No Abstract" & Replicate..R. != "")
+rpp = rpp[,c(138, 139,76,24, 30, 36,37,72)]
+colnames(rpp) = c("TextNumber", "Abstract", "Replicated", "Citation Count",
+                  "Discipline", "SurprisingResult", "ExcitingResult", 
+                  "Direction of Replication")
+rpp$Replicated = ifelse(rpp$Replicated == "yes", "Yes", "No")
+```
+
+# Plotting Studies 
+
+```{r}
+library(ggplot2)
+library(ggthemes)
+
+rpp_discipline = group_by(rpp, Discipline, Replicated) %>%
+  count(Studies = n())
+rpp$SurprisingResult = as.numeric(as.character(rpp$SurprisingResult))
+rpp %>% 
+  ggplot(aes(x =Replicated , y = SurprisingResult)) +  
+  geom_jitter(aes(color = Discipline, size = SurprisingResult), width = 0.25, height = 0.5)+
+ # geom_bar(stat = "identity", position = "dodge", width = 0.5)+
+    theme_few()+
+  scale_color_solarized()+
+  xlab("Replication Status") + ylab("Surprising Result") + 
+    ggtitle("Abstracts, Suprisingness and Replication") + 
+  theme(axis.text = element_text( face = "bold", size = rel(0.8)),
+          axis.title = element_text(face = "bold", size = rel(1.2)),
+          legend.title = element_text(face = "bold", size = rel(1.2)),
+        axis.text.x = element_text(face = "bold", size = rel(1.2)),
+          plot.title = element_text(face = "bold", size = rel(1.2), hjust = .5))
+
+```
+
+# Classifier Decisions
+
+## Nearest Neighbors
+
+```{r}
+c3 = read.csv("classify_knn.csv", header = TRUE, sep = ",")
+c3 %>% 
+  ggplot(aes(x =factor(Actual), y = Decision)) +  
+    geom_jitter( width = 0.15, height = 0.5, aes(color = Match), size = 4)+
+    theme_few()+
+  scale_color_wsj()+
+  xlab("Actual Replication Status") + ylab("Classifier Decision") + 
+    ggtitle("K-nearest neighbors Classifier Accuracy") + 
+  theme(axis.text = element_text( face = "bold", size = rel(0.8)),
+          axis.title = element_text(face = "bold", size = rel(1.2)),
+          legend.title = element_text(face = "bold", size = rel(1.2)),
+        axis.text.x = element_text(face = "bold", size = rel(1.2)),
+          plot.title = element_text(face = "bold", size = rel(1.2), hjust = .5))
+```
+
+## Classifier Performance
+
+```{r}
+clf_compare = read.csv("classifier_compare.csv", header = TRUE, sep = ",")
+
+clf_compare = clf_compare %>% arrange(desc(test_score))
+
+clf_compare = clf_compare %>% filter(!classifier %in% c("Logistic Regression",
+                                                        "Linear SVM",
+                                                        "Neural Net"))
+
+clf_compare %>% 
+  ggplot(aes(x =train_score, y = test_score)) +  
+    geom_point(aes(color = classifier), size = 4)+
+  theme_few()+
+  xlim(0,1)+
+  ylim(0,1)+
+  scale_color_wsj()+
+  xlab("Training Score") + ylab("Testing Score") + 
+    ggtitle("Comparison of Classifiers") + 
+  theme(axis.text = element_text( face = "bold", size = rel(0.8)),
+          axis.title = element_text(face = "bold", size = rel(1.2)),
+          legend.title = element_text(face = "bold", size = rel(1.2)),
+        axis.text.x = element_text(face = "bold", size = rel(1.2)),
+   plot.title = element_text(face = "bold", size = rel(1.2), hjust = .5))
+```
+
+# Lexical Diversity and Length
+
+```{r}
+
+ld = read.csv("lexical_diversity.csv", header = TRUE, sep = ",")
+
+ld$R = ifelse(ld$Replicated == "yes", 1,0)
+ld$ld_c = scale(ld$Lexical.Diversity, center = TRUE, scale = FALSE)
+ld_lm  = glm (data = ld, R ~ Ldnew + Length, 
+              family = "binomial")
+summary(ld_lm)
+
+ld_lm2  = glm (data = ld, R ~  Length, 
+              family = "binomial")
+summary(ld_lm2)
+anova(ld_lm, ld_lm2)
+
+## need to plot length figure
+
+x = sjPlot::plot_model(ld_lm, type = "pred", terms = "Length")
+
+x + theme_few()+
+  scale_color_wsj()+
+  xlab("Length of Abstract") + ylab("Predicted probability of Replication") + 
+    ggtitle("Length of Abstract Predicting Replication") + 
+  theme(axis.text = element_text( face = "bold", size = rel(0.8)),
+          axis.title = element_text(face = "bold", size = rel(1.2)),
+          legend.title = element_text(face = "bold", size = rel(1.2)),
+        axis.text.x = element_text(face = "bold", size = rel(1.2)),
+      plot.title = element_text(face = "bold", size = rel(1.2), hjust = .5))
+
+
+ld$Lexical.Diversity = round(ld$Lexical.Diversity, digits = 2)
+ld %>% 
+  ggplot(aes(x =Replicated, y = Length, color = Replicated)) +  
+    geom_point()+
+    geom_text(aes(label=TextNumber), hjust = 1.5, vjust = .5)+
+  geom_smooth(method = "glm", se = FALSE)+
+  theme_few()+
+  scale_color_wsj()+
+  xlab("Replication Status") + ylab("Lexical Diversity of Abstract") + 
+    ggtitle("Lexical Diversity Predicting Replication") + 
+  theme(axis.text = element_text( face = "bold", size = rel(0.8)),
+          axis.title = element_text(face = "bold", size = rel(1.2)),
+          legend.title = element_text(face = "bold", size = rel(1.2)),
+        axis.text.x = element_text(face = "bold", size = rel(1.2)),
+      plot.title = element_text(face = "bold", size = rel(1.2), hjust = .5))
+
+ld %>% 
+  ggplot(aes(x =Replicated, y = Length, color = Replicated)) +  
+    geom_point()+
+    geom_text(aes(label=TextNumber), hjust = 1.5, vjust = .5)+
+  geom_smooth(method = "glm", se = FALSE)+
+  theme_few()+
+  scale_color_wsj()+
+  xlab("Replication Status") + ylab("Length of Abstract") + 
+    ggtitle("Length Predicting Replication") + 
+  theme(axis.text = element_text( face = "bold", size = rel(0.8)),
+          axis.title = element_text(face = "bold", size = rel(1.2)),
+          legend.title = element_text(face = "bold", size = rel(1.2)),
+        axis.text.x = element_text(face = "bold", size = rel(1.2)),
+      plot.title = element_text(face = "bold", size = rel(1.2), hjust = .5))
+
+```
+
+
+# POS Tagging
+
+```{r}
+pos_data = read.csv("pos_python.csv", header = TRUE, sep = ",")
+library(dplyr)
+## This data is in wide format: need to convert to long format
+
+pos_long = tidyr::gather(pos_data, PartOfSpeech, Count, 
+                         Adjective, Noun, Verb, Other, factor_key=TRUE)
+pos_long = pos_long %>% arrange(TextNumber)
+
+pos_long$Percent = pos_long$Count/pos_long$Length
+pos_long$Percent = round(pos_long$Percent, digits = 2)
+
+pos_long$R = ifelse(pos_long$Replicated == "yes", 1,0)
+
+contrasts(pos_long$PartOfSpeech) = contr.treatment(4, base = 1)
+library(lme4)
+cl3 <- glmerControl(optimizer="optimx",
+                    optCtrl=list(method="nlminb",maxiter=10000))
+library(optimx)
+pos_lm  = glmer (data = pos_long, R ~ PartOfSpeech*Percent  +
+                   (1|TextNumber), 
+              family = "binomial", control = cl3)
+summary(pos_lm)
+car::Anova(pos_lm)
+
+
+pos_long$Replicated = ifelse(pos_long$Replicated == "yes", "Yes", "No")
+
+```
+
+```{r}
+library(ggplot2)
+library(ggthemes)
+pos_long %>% 
+  ggplot(aes(x =Replicated, y = Percent, color = Replicated)) +  
+    geom_point()+
+   geom_text(aes(label=TextNumber), hjust = 1.5, vjust = .5)+
+  geom_smooth(method = "glm", se = FALSE)+
+    theme_light()+
+  scale_color_wsj()+
+  facet_wrap(~PartOfSpeech)+
+  xlab("Replication Status") + ylab("Percentage of POS") + 
+    ggtitle("Parts of Speech Predicting Replication?") + 
+  theme(axis.text = element_text( face = "bold", size = rel(0.8)),
+          axis.title = element_text(face = "bold", size = rel(1.2)),
+          legend.title = element_text(face = "bold", size = rel(1.2)),
+        axis.text.x = element_text(face = "bold", size = rel(1.4)),    
+        strip.text.x = element_text(face = "bold", size = rel(1.2)),
+    plot.title = element_text(face = "bold", size = rel(1.2), hjust = .5))
+```
+
